@@ -1,0 +1,36 @@
+#pragma once
+
+#include <stddef.h>
+#include <stdint.h>
+#include <unistd.h>
+
+#define PATCH_COUNT 5
+
+enum patch_index {
+    PATCH_RP_PRIMARY,
+    PATCH_RP_ALTERNATE,
+    PATCH_RP_FALLBACK,
+    PATCH_DYNAMIC_NOTIFICATION,
+    PATCH_PROTECTION_COMPUTATION,
+};
+
+typedef struct {
+    const char *id;
+    const char *name;
+    uint32_t offset;
+    size_t size;
+    uint8_t original[4];
+    uint8_t replacement[4];
+    unsigned int matches;
+} patch_t;
+
+typedef struct {
+    uint32_t firmware;
+    uint32_t offsets[PATCH_COUNT];
+} firmware_profile_t;
+
+extern patch_t patches[PATCH_COUNT];
+
+const firmware_profile_t *find_firmware_profile(uint32_t firmware);
+int scan_offsets(pid_t pid, intptr_t base);
+int scanned_offsets_complete(void);
