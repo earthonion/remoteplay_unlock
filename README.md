@@ -15,8 +15,10 @@ Built ELFs are ignored by Git. The `main` branch has a GitHub Actions workflow t
 
 | Firmware | Firmware ID |
 | --- | --- |
+| 3.20 | `0x0320` |
 | 10.01 | `0x1001` |
 | 12.00 | `0x1200` |
+| 12.70 | `0x1270` |
 | 13.60 | `0x1360` |
 
 The firmware ID is `kernel_get_fw_version() >> 16`.

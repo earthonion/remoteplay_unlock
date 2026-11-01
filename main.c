@@ -94,7 +94,7 @@ static int ptrace_write(pid_t pid, intptr_t addr, const void *buf, size_t size) 
 
 static int write_bytes(pid_t pid, intptr_t addr, const uint8_t *bytes, size_t size) {
     intptr_t page = addr & ~(intptr_t)(PAGE_SIZE - 1);
-    uint8_t verify[5];
+    uint8_t verify[6];
     int prot = kernel_get_vmem_protection(pid, page, PAGE_SIZE);
     int err;
     int saved_errno;
@@ -141,7 +141,7 @@ static int apply_patches(pid_t pid, intptr_t base) {
 
     for(size_t i=0; i<PATCH_COUNT; i++) {
         const patch_t *patch = &patches[i];
-        uint8_t current[5];
+        uint8_t current[6];
 
         if(mdbg_copyout(pid, base+patch->offset, current, patch->size)) {
             printf("%s: read failed at offset 0x%x\n", patch->name, patch->offset);
@@ -167,7 +167,7 @@ static int apply_patches(pid_t pid, intptr_t base) {
 
     for(size_t i=0; i<PATCH_COUNT; i++) {
         const patch_t *patch = &patches[i];
-        uint8_t current[5];
+        uint8_t current[6];
 
         if(mdbg_copyout(pid, base+patch->offset, current, patch->size) ||
            memcmp(current, patch->original, patch->size)) {
