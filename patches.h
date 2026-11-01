@@ -19,15 +19,15 @@ typedef struct {
     const char *name;
     uint32_t offset;
     size_t size;
-    uint8_t original[5];
-    uint8_t replacement[5];
+    uint8_t original[6];
+    uint8_t replacement[6];
     unsigned int matches;
 } patch_t;
 
 typedef struct {
     size_t size;
-    uint8_t original[5];
-    uint8_t replacement[5];
+    uint8_t original[6];
+    uint8_t replacement[6];
 } patch_override_t;
 
 typedef struct {
