@@ -104,7 +104,7 @@ static const firmware_profile_t firmware_profiles[] = {
     },
 };
 
-static const scan_rule_t scan_rules[PATCH_COUNT] = {
+static const scan_rule_t scan_rules[] = {
     {
         38,
         25,
@@ -185,7 +185,85 @@ static const scan_rule_t scan_rules[PATCH_COUNT] = {
             1, 1, 1, 1, 1, 1, 1, 1, 0,
         },
     },
+    {
+        42,
+        37,
+        {
+            0x8b, 0x8b, 0xc4, 0x01, 0x10, 0x00, 0x83, 0xf9,
+            0x08, 0x0f, 0x87, 0xd2, 0x01, 0x00, 0x00, 0xba,
+            0xc4, 0x01, 0x00, 0x00, 0x0f, 0xa3, 0xca, 0x0f,
+            0x83, 0xcd, 0x00, 0x00, 0x00, 0x48, 0x83, 0xbd,
+            0xc0, 0xfe, 0xff, 0xff, 0x10, 0x44, 0x0f, 0xb6,
+            0x53, 0x08,
+        },
+        {
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1,
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1,
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        },
+    },
+    {
+        27,
+        22,
+        {
+            0xba, 0x38, 0x00, 0x00, 0x00, 0x0f, 0xa3, 0xca,
+            0x0f, 0x83, 0xe9, 0x00, 0x00, 0x00, 0x48, 0x83,
+            0xbd, 0xc0, 0xfe, 0xff, 0xff, 0x10, 0x44, 0x0f,
+            0xb6, 0x53, 0x08,
+        },
+        {
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1,
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        },
+    },
+    {
+        39,
+        0,
+        {
+            0x44, 0x0f, 0xb6, 0x53, 0x08, 0x48, 0x83, 0xec,
+            0x08, 0x4c, 0x8b, 0xa5, 0x98, 0xfe, 0xff, 0xff,
+            0x31, 0xc0, 0x4c, 0x8d, 0x1d, 0xfc, 0xb3, 0x45,
+            0x00, 0x4c, 0x8d, 0x35, 0x4a, 0x45, 0x46, 0x00,
+            0x4c, 0x8d, 0x2d, 0xed, 0x2a, 0x46, 0x00,
+        },
+        {
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0,
+            1, 1, 1, 0, 0, 0, 0,
+        },
+    },
+    {
+        41,
+        0,
+        {
+            0x55, 0x48, 0x89, 0xe5, 0x41, 0x57, 0x41, 0x56,
+            0x41, 0x55, 0x41, 0x54, 0x53, 0x48, 0x83, 0xec,
+            0x28, 0x48, 0x83, 0x7f, 0x30, 0x00, 0x49, 0x89,
+            0xd5, 0x49, 0x89, 0xff, 0x4c, 0x8d, 0x67, 0x30,
+            0x48, 0x89, 0x75, 0xc8, 0x74, 0x28, 0x4c, 0x89,
+            0xe7,
+        },
+        {
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 0, 1, 1, 1,
+        },
+    },
 };
+
+static const size_t scan_rule_patch_indices[] = {
+    PATCH_RP_PRIMARY,
+    PATCH_RP_ALTERNATE,
+    PATCH_RP_FALLBACK,
+    PATCH_DYNAMIC_NOTIFICATION,
+    PATCH_PROTECTION_COMPUTATION,
+    PATCH_RP_PRIMARY,
+    PATCH_RP_ALTERNATE,
+    PATCH_RP_FALLBACK,
+    PATCH_PROTECTION_COMPUTATION,
+};
+
+#define SCAN_RULE_COUNT (sizeof(scan_rules) / sizeof(scan_rules[0]))
 
 const firmware_profile_t *find_firmware_profile(uint32_t firmware) {
     size_t count = sizeof(firmware_profiles) / sizeof(firmware_profiles[0]);
@@ -241,18 +319,24 @@ int scan_offsets(pid_t pid, intptr_t base) {
             if(absolute < pos) {
                 continue;
             }
-            for(size_t j=0; j<PATCH_COUNT; j++) {
+            for(size_t j=0; j<SCAN_RULE_COUNT; j++) {
                 const scan_rule_t *rule = &scan_rules[j];
+                size_t patch_index = scan_rule_patch_indices[j];
+                size_t offset = absolute+rule->patch_offset;
 
                 if(i+rule->pattern_size > size ||
                    buf[i] != rule->pattern[0]) {
                     continue;
                 }
                 if(pattern_matches(buf+i, rule)) {
-                    if(!patches[j].matches) {
-                        patches[j].offset = absolute+rule->patch_offset;
+                    if(patches[patch_index].matches &&
+                       patches[patch_index].offset == offset) {
+                        continue;
                     }
-                    patches[j].matches++;
+                    if(!patches[patch_index].matches) {
+                        patches[patch_index].offset = offset;
+                    }
+                    patches[patch_index].matches++;
                 }
             }
         }
