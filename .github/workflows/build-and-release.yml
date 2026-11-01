@@ -45,10 +45,11 @@ jobs:
 
       - name: Update latest release
         run: |
+          notes="$(git log -1 --pretty=format:%B)"
           gh release delete latest --yes 2>/dev/null || true
           gh release create latest \
             --title "Build ${{ steps.sha.outputs.short }}" \
-            --notes "Automated build from commit ${{ github.sha }}" \
+            --notes "${notes}" \
             --prerelease \
             remoteplay_unlock.elf
         env:
