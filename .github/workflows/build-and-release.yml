@@ -1,0 +1,55 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-and-release-main
+  cancel-in-progress: true
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xxd clang-18 lld-18 unzip
+
+      - name: Download PS5 Payload SDK
+        run: |
+          curl -fLsS -o /tmp/ps5-payload-sdk.zip \
+            https://github.com/ps5-payload-dev/sdk/releases/latest/download/ps5-payload-sdk.zip
+          unzip -q /tmp/ps5-payload-sdk.zip -d /tmp
+
+      - name: Build payload
+        run: make clean all PS5_PAYLOAD_SDK=/tmp/ps5-payload-sdk
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: remoteplay_unlock
+          path: remoteplay_unlock.elf
+          if-no-files-found: error
+
+      - name: Get short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Update latest release
+        run: |
+          gh release delete latest --yes 2>/dev/null || true
+          gh release create latest \
+            --title "Build ${{ steps.sha.outputs.short }}" \
+            --notes "Automated build from commit ${{ github.sha }}" \
+            --prerelease \
+            remoteplay_unlock.elf
+        env:
+          GH_TOKEN: ${{ github.token }}
