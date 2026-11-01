@@ -53,6 +53,10 @@ static const firmware_profile_t firmware_profiles[] = {
         0x1360,
         {0x600fe, 0x6013d, 0x602c8, 0x1bc75, 0x1b4f0},
     },
+    {
+        0x1200,
+        {0x3962e, 0x3966d, 0x397f8, 0x1ba25, 0x1b2b0},
+    },
 };
 
 const firmware_profile_t *find_firmware_profile(uint32_t firmware) {
