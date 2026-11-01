@@ -133,33 +133,16 @@ static int write_bytes(pid_t pid, intptr_t addr, const uint8_t *bytes, size_t si
     return 0;
 }
 
-#define MAX_PATCH_COUNT 16
-
-static const patch_t *profile_patch(const firmware_profile_t *profile, size_t index) {
-    if(index < PATCH_COUNT) {
-        return &patches[index];
-    }
-    return &profile->supplemental[index-PATCH_COUNT];
-}
-
-static int apply_patches(pid_t pid, intptr_t base, const firmware_profile_t *profile) {
-    size_t count = PATCH_COUNT+profile->supplemental_count;
-    size_t applied[MAX_PATCH_COUNT];
+static int apply_patches(pid_t pid, intptr_t base) {
+    size_t applied[PATCH_COUNT];
     size_t applied_count = 0;
     int already_patched = 1;
     int failed = 0;
 
-    if(count > MAX_PATCH_COUNT) {
-        return -1;
-    }
-
-    for(size_t i=0; i<count; i++) {
-        const patch_t *patch = profile_patch(profile, i);
+    for(size_t i=0; i<PATCH_COUNT; i++) {
+        const patch_t *patch = &patches[i];
         uint8_t current[6];
 
-        if(!patch->size) {
-            continue;
-        }
         if(mdbg_copyout(pid, base+patch->offset, current, patch->size)) {
             printf("%s: read failed at offset 0x%x\n", patch->name, patch->offset);
             return -1;
@@ -182,13 +165,10 @@ static int apply_patches(pid_t pid, intptr_t base, const firmware_profile_t *pro
         return -1;
     }
 
-    for(size_t i=0; i<count; i++) {
-        const patch_t *patch = profile_patch(profile, i);
+    for(size_t i=0; i<PATCH_COUNT; i++) {
+        const patch_t *patch = &patches[i];
         uint8_t current[6];
 
-        if(!patch->size) {
-            continue;
-        }
         if(mdbg_copyout(pid, base+patch->offset, current, patch->size) ||
            memcmp(current, patch->original, patch->size)) {
             continue;
@@ -197,7 +177,7 @@ static int apply_patches(pid_t pid, intptr_t base, const firmware_profile_t *pro
             printf("%s: write failed; rolling back\n", patch->name);
             while(applied_count) {
                 size_t index = applied[--applied_count];
-                const patch_t *rollback = profile_patch(profile, index);
+                const patch_t *rollback = &patches[index];
 
                 if(write_bytes(pid, base+rollback->offset,
                                rollback->original, rollback->size)) {
@@ -247,17 +227,15 @@ static int patch_remoteplay(void) {
     for(size_t i=0; i<PATCH_COUNT; i++) {
         patches[i].offset = profile->offsets[i];
         patches[i].matches = 1;
-        if(profile->overrides) {
+        if(profile->overrides && profile->overrides[i].size) {
             patches[i].size = profile->overrides[i].size;
-            if(patches[i].size) {
-                memcpy(patches[i].original, profile->overrides[i].original,
-                       patches[i].size);
-                memcpy(patches[i].replacement, profile->overrides[i].replacement,
-                       patches[i].size);
-            }
+            memcpy(patches[i].original, profile->overrides[i].original,
+                   patches[i].size);
+            memcpy(patches[i].replacement, profile->overrides[i].replacement,
+                   patches[i].size);
         }
     }
-    return apply_patches(pid, base, profile);
+    return apply_patches(pid, base);
 }
 
 static int run_with_privileges(void) {

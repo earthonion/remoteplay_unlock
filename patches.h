@@ -33,8 +33,6 @@ typedef struct {
     uint32_t firmware;
     uint32_t offsets[PATCH_COUNT];
     const patch_override_t *overrides;
-    const patch_t *supplemental;
-    size_t supplemental_count;
 } firmware_profile_t;
 
 extern patch_t patches[PATCH_COUNT];
