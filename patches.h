@@ -2,7 +2,6 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <unistd.h>
 
 #define PATCH_COUNT 5
 
@@ -32,5 +31,3 @@ typedef struct {
 extern patch_t patches[PATCH_COUNT];
 
 const firmware_profile_t *find_firmware_profile(uint32_t firmware);
-int scan_offsets(pid_t pid, intptr_t base);
-int scanned_offsets_complete(void);

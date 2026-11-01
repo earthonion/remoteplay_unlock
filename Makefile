@@ -7,9 +7,9 @@ else
     $(error PS5_PAYLOAD_SDK is undefined)
 endif
 
-ELF := remoteplay_unlock_offsets.elf
-SRCS := main.c patches.c self.c self-prospero.c io.c sha256.c
-CFLAGS := -Wall -Wextra -Wno-sign-compare -O2 -DTESTING_BRANCH
+ELF := remoteplay_unlock.elf
+SRCS := main.c patches.c
+CFLAGS := -Wall -Wextra -O2
 LDLIBS := -lkernel
 
 all: $(ELF)

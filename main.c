@@ -1,5 +1,4 @@
 #include <errno.h>
-#include <fcntl.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -8,7 +7,6 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <sys/ptrace.h>
-#include <sys/stat.h>
 #include <sys/sysctl.h>
 #include <sys/syscall.h>
 #include <sys/user.h>
@@ -17,13 +15,7 @@
 #include <ps5/kernel.h>
 #include <ps5/mdbg.h>
 
-#include "io.h"
 #include "patches.h"
-#include "self.h"
-
-#define REMOTEPLAY_PATH "/system/vsh/app/NPXS40102/eboot.bin"
-#define EXPORT_DIR "/mnt/usb0/rp_prohibit"
-#define OFFSETS_JSON EXPORT_DIR "/rp_prohibit_offsets.json"
 
 typedef struct notify_request {
     char useless1[45];
@@ -142,11 +134,6 @@ static int write_bytes(pid_t pid, intptr_t addr, const uint8_t *bytes, size_t si
 }
 
 static int apply_patches(pid_t pid, intptr_t base) {
-#ifdef RESTORE_PATCHES
-    const int restoring = 1;
-#else
-    const int restoring = 0;
-#endif
     size_t applied[PATCH_COUNT];
     size_t applied_count = 0;
     int already_patched = 1;
@@ -154,17 +141,15 @@ static int apply_patches(pid_t pid, intptr_t base) {
 
     for(size_t i=0; i<PATCH_COUNT; i++) {
         const patch_t *patch = &patches[i];
-        const uint8_t *expected = restoring ? patch->replacement : patch->original;
-        const uint8_t *desired = restoring ? patch->original : patch->replacement;
         uint8_t current[4];
 
         if(mdbg_copyout(pid, base+patch->offset, current, patch->size)) {
             printf("%s: read failed at offset 0x%x\n", patch->name, patch->offset);
             return -1;
         }
-        if(!memcmp(current, expected, patch->size)) {
+        if(!memcmp(current, patch->original, patch->size)) {
             already_patched = 0;
-        } else if(memcmp(current, desired, patch->size)) {
+        } else if(memcmp(current, patch->replacement, patch->size)) {
             printf("%s: signature mismatch at offset 0x%x; unsupported build\n",
                    patch->name, patch->offset);
             return -1;
@@ -172,8 +157,7 @@ static int apply_patches(pid_t pid, intptr_t base) {
     }
 
     if(already_patched) {
-        puts(restoring ? "Original instructions are already restored" :
-                         "RP-Prohibit patches are already applied");
+        puts("RP-Prohibit patches are already applied");
         return 0;
     }
     if(ptrace_attach(pid)) {
@@ -183,24 +167,20 @@ static int apply_patches(pid_t pid, intptr_t base) {
 
     for(size_t i=0; i<PATCH_COUNT; i++) {
         const patch_t *patch = &patches[i];
-        const uint8_t *expected = restoring ? patch->replacement : patch->original;
-        const uint8_t *desired = restoring ? patch->original : patch->replacement;
         uint8_t current[4];
 
         if(mdbg_copyout(pid, base+patch->offset, current, patch->size) ||
-           memcmp(current, expected, patch->size)) {
+           memcmp(current, patch->original, patch->size)) {
             continue;
         }
-        if(write_bytes(pid, base+patch->offset, desired, patch->size)) {
+        if(write_bytes(pid, base+patch->offset, patch->replacement, patch->size)) {
             printf("%s: write failed; rolling back\n", patch->name);
             while(applied_count) {
                 size_t index = applied[--applied_count];
                 const patch_t *rollback = &patches[index];
-                const uint8_t *rollback_bytes = restoring ?
-                    rollback->replacement : rollback->original;
 
                 if(write_bytes(pid, base+rollback->offset,
-                               rollback_bytes, rollback->size)) {
+                               rollback->original, rollback->size)) {
                     printf("%s: rollback failed\n", rollback->name);
                 }
             }
@@ -209,8 +189,7 @@ static int apply_patches(pid_t pid, intptr_t base) {
         }
 
         applied[applied_count++] = i;
-        printf("%s: %s at offset 0x%x\n", patch->name,
-               restoring ? "restored" : "patched", patch->offset);
+        printf("%s: patched at offset 0x%x\n", patch->name, patch->offset);
     }
 
     if(do_ptrace(PT_DETACH, pid, 0, 0)) {
@@ -220,139 +199,12 @@ static int apply_patches(pid_t pid, intptr_t base) {
     return failed;
 }
 
-#ifdef TESTING_BRANCH
-static int export_eboot(uint32_t firmware, char *name, size_t name_size) {
-    char destination[256];
-    struct stat st;
-    int input = -1;
-    int output = -1;
-    int err = -1;
-
-    if(mkdir(EXPORT_DIR, 0755) && errno != EEXIST) {
-        printf("mkdir %s failed: %s\n", EXPORT_DIR, strerror(errno));
-        return -1;
-    }
-    if((input=open(REMOTEPLAY_PATH, O_RDONLY, 0)) < 0) {
-        printf("open %s failed: %s\n", REMOTEPLAY_PATH, strerror(errno));
-        return -1;
-    }
-    if(fstat(input, &st)) {
-        printf("fstat %s failed: %s\n", REMOTEPLAY_PATH, strerror(errno));
-        close(input);
-        return -1;
-    }
-
-    snprintf(name, name_size, "eboot_%04x.bin", firmware);
-    snprintf(destination, sizeof(destination), "%s/%s", EXPORT_DIR, name);
-    if((output=open(destination, O_RDWR | O_CREAT | O_TRUNC, 0644)) < 0) {
-        printf("open %s failed: %s\n", destination, strerror(errno));
-        close(input);
-        return -1;
-    }
-
-    int self = self_is_valid(REMOTEPLAY_PATH);
-    if(self > 0) {
-        err = self_extract_elf(input, output);
-    } else if(!self) {
-        err = io_pcopy(input, output, 0, 0, st.st_size);
-    }
-
-    close(input);
-    if(close(output) && !err) {
-        err = -1;
-    }
-    if(err && errno == EBADMSG) {
-        printf("SELF digest mismatch; keeping decrypted eboot %s\n", destination);
-        err = 0;
-    }
-    if(err) {
-        printf("Could not export eboot to %s: self=%d errno=%d (%s)\n",
-               destination, self, errno, strerror(errno));
-        unlink(destination);
-        return -1;
-    }
-
-    printf("Decrypted eboot exported to %s\n", destination);
-    return 0;
-}
-
-static int export_eboot_syscore(uint32_t firmware, char *name, size_t name_size) {
-    pid_t pid = getpid();
-    uint64_t authid = kernel_get_ucred_authid(pid);
-    int result;
-
-    if(kernel_set_ucred_authid(pid, 0x4800000000000007l)) {
-        puts("Could not set SceSysCore authid for eboot export");
-        return -1;
-    }
-    result = export_eboot(firmware, name, name_size);
-    if(kernel_set_ucred_authid(pid, authid)) {
-        puts("Could not restore authid after eboot export");
-        return -1;
-    }
-    return result;
-}
-
-static int write_offsets_json(uint32_t firmware, int patched, const char *eboot_name) {
-    FILE *file = fopen(OFFSETS_JSON, "w");
-
-    if(!file) {
-        printf("open %s failed: %s\n", OFFSETS_JSON, strerror(errno));
-        return -1;
-    }
-
-    fprintf(file, "{\n");
-    fprintf(file, "  \"firmware\": \"0x%04x\",\n", firmware);
-    fprintf(file, "  \"firmware_version\": \"%x.%02x\",\n",
-            firmware >> 8, firmware & 0xff);
-    fprintf(file, "  \"scan_complete\": %s,\n",
-            scanned_offsets_complete() ? "true" : "false");
-    fprintf(file, "  \"patch_applied\": %s,\n", patched ? "true" : "false");
-    if(eboot_name) {
-        fprintf(file, "  \"eboot\": \"%s\",\n", eboot_name);
-    } else {
-        fprintf(file, "  \"eboot\": null,\n");
-    }
-    fprintf(file, "  \"offsets\": {\n");
-    for(size_t i=0; i<PATCH_COUNT; i++) {
-        fprintf(file, "    \"%s\": ", patches[i].id);
-        if(patches[i].matches == 1) {
-            fprintf(file, "\"0x%x\"", patches[i].offset);
-        } else {
-            fprintf(file, "null");
-        }
-        fprintf(file, "%s\n", i+1 == PATCH_COUNT ? "" : ",");
-    }
-    fprintf(file, "  },\n");
-    fprintf(file, "  \"match_counts\": {\n");
-    for(size_t i=0; i<PATCH_COUNT; i++) {
-        fprintf(file, "    \"%s\": %u%s\n", patches[i].id,
-                patches[i].matches, i+1 == PATCH_COUNT ? "" : ",");
-    }
-    fprintf(file, "  }\n");
-    fprintf(file, "}\n");
-
-    if(fclose(file)) {
-        printf("write %s failed: %s\n", OFFSETS_JSON, strerror(errno));
-        return -1;
-    }
-    printf("Offsets written to %s\n", OFFSETS_JSON);
-    return 0;
-}
-#endif
-
 static int patch_remoteplay(void) {
     uint32_t raw_firmware = kernel_get_fw_version();
     uint32_t firmware = raw_firmware >> 16;
-    const firmware_profile_t *profile;
+    const firmware_profile_t *profile = find_firmware_profile(firmware);
     pid_t pid = find_pid("SceRemotePlay");
     intptr_t base;
-    int unknown;
-#ifdef TESTING_BRANCH
-    int result;
-    char eboot_name[64];
-    int eboot_exported = 0;
-#endif
 
     printf("Firmware: 0x%08x (%x.%02x)\n", raw_firmware,
            firmware >> 8, firmware & 0xff);
@@ -366,42 +218,17 @@ static int patch_remoteplay(void) {
     }
     printf("SceRemotePlay: pid=%d base=0x%lx\n", pid, base);
 
-    profile = find_firmware_profile(firmware);
-#ifdef TESTING_BRANCH
-    profile = NULL;
-    puts("Testing branch: ignoring hardcoded profiles");
-#endif
-    unknown = !profile;
-    if(!unknown) {
-        printf("Using firmware profile 0x%04x\n", profile->firmware);
-        for(size_t i=0; i<PATCH_COUNT; i++) {
-            patches[i].offset = profile->offsets[i];
-            patches[i].matches = 1;
-        }
-        return apply_patches(pid, base);
+    if(!profile) {
+        printf("No hardcoded profile for firmware 0x%04x\n", firmware);
+        return -1;
     }
 
-#ifndef TESTING_BRANCH
-    printf("No hardcoded profile for firmware 0x%04x\n", firmware);
-    return -1;
-#else
-    printf("Pattern scanning firmware 0x%04x\n", firmware);
-    result = scan_offsets(pid, base);
-    if(!export_eboot_syscore(firmware, eboot_name, sizeof(eboot_name))) {
-        eboot_exported = 1;
+    printf("Using firmware profile 0x%04x\n", profile->firmware);
+    for(size_t i=0; i<PATCH_COUNT; i++) {
+        patches[i].offset = profile->offsets[i];
+        patches[i].matches = 1;
     }
-    if(result || !scanned_offsets_complete()) {
-        puts("Could not resolve every patch offset");
-        result = -1;
-    } else {
-        puts("Offset scan complete; no instructions modified");
-        result = 0;
-    }
-    if(write_offsets_json(firmware, 0, eboot_exported ? eboot_name : NULL)) {
-        result = -1;
-    }
-    return result;
-#endif
+    return apply_patches(pid, base);
 }
 
 static int run_with_privileges(void) {
@@ -448,24 +275,15 @@ static int run_with_privileges(void) {
 
 int main(void) {
     setvbuf(stdout, NULL, _IONBF, 0);
-#ifdef TESTING_BRANCH
-    puts("Remote Play offset scanner (testing)");
-#else
     puts("Remote Play prohibition bypass (runtime patch)");
-#endif
 
     if(run_with_privileges()) {
-        puts("Remote Play payload failed; check the log");
-        notify("Remote Play payload failed; check the log");
+        puts("Failed to patch SceRemotePlay");
+        notify("Remote Play unlock failed; check the payload log");
         return 1;
     }
 
-#ifdef TESTING_BRANCH
-    puts("Offset scan and export completed");
-    notify("Remote Play offsets exported");
-#else
     puts("RP-Prohibit is now forced to zero");
     notify("Remote Play prohibition patch applied");
-#endif
     return 0;
 }
