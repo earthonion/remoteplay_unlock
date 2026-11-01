@@ -158,3 +158,7 @@ git push origin main
 ```
 
 The `main` workflow will build the hardcoded ELF and publish it to the `latest` prerelease. Scanner or signature improvements should be committed and pushed on `testing` instead; pushes to `testing` do not create a hardcoded-payload release.
+
+---
+
+> **Note:** This project was made entirely by AI (Kimi K3.1 pro).
