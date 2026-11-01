@@ -19,14 +19,21 @@ typedef struct {
     const char *name;
     uint32_t offset;
     size_t size;
-    uint8_t original[4];
-    uint8_t replacement[4];
+    uint8_t original[5];
+    uint8_t replacement[5];
     unsigned int matches;
 } patch_t;
 
 typedef struct {
+    size_t size;
+    uint8_t original[5];
+    uint8_t replacement[5];
+} patch_override_t;
+
+typedef struct {
     uint32_t firmware;
     uint32_t offsets[PATCH_COUNT];
+    const patch_override_t *overrides;
 } firmware_profile_t;
 
 extern patch_t patches[PATCH_COUNT];

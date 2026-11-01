@@ -15,6 +15,7 @@ Built ELFs are ignored by Git. The `main` branch has a GitHub Actions workflow t
 
 | Firmware | Firmware ID |
 | --- | --- |
+| 10.01 | `0x1001` |
 | 12.00 | `0x1200` |
 | 13.60 | `0x1360` |
 
@@ -123,15 +124,17 @@ static const firmware_profile_t firmware_profiles[] = {
     {
         0x1360,
         {0x600fe, 0x6013d, 0x602c8, 0x1bc75, 0x1b4f0},
+        NULL,
     },
     {
         0x1400,
         {0xPRIMARY, 0xALTERNATE, 0xFALLBACK, 0xDYNAMIC, 0xPROTECTION},
+        NULL,
     },
 };
 ```
 
-Replace the example `0x1400` ID and placeholder offsets with values from the JSON report. Keep the patch order unchanged.
+Replace the example `0x1400` ID and placeholder offsets with values from the JSON report. Keep the patch order unchanged. The third field is an optional `patch_override_t` array. Use it when a firmware needs different original/replacement bytes or instruction lengths, and use `{0}` for patches that should keep the defaults. For example, 10.01 uses a five-byte `movzx r10d` override for the first three patches; 12.00 and 13.60 use `NULL` because no overrides are needed.
 
 ### 4. Verify and publish
 
