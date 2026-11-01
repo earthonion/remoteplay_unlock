@@ -48,21 +48,25 @@ patch_t patches[PATCH_COUNT] = {
     },
 };
 
+/* The RP-Prohibit value is loaded by "movzx r10d, byte[rbx+8]", which precedes a
+   flags-dependent "jb" (a std::string short/heap length check). Zeroing at the movzx
+   clobbers CF and crashes the HTTP response builder, so patch the "push r10" that
+   supplies the sprintf value instead: "push r10" (41 52) -> "push 0" (6a 00). */
 static const patch_override_t firmware_1001_overrides[PATCH_COUNT] = {
     {
-        5,
-        {0x44, 0x0f, 0xb6, 0x53, 0x08},
-        {0x45, 0x31, 0xd2, 0x90, 0x90},
+        2,
+        {0x41, 0x52},
+        {0x6a, 0x00},
     },
     {
-        5,
-        {0x44, 0x0f, 0xb6, 0x53, 0x08},
-        {0x45, 0x31, 0xd2, 0x90, 0x90},
+        2,
+        {0x41, 0x52},
+        {0x6a, 0x00},
     },
     {
-        5,
-        {0x44, 0x0f, 0xb6, 0x53, 0x08},
-        {0x45, 0x31, 0xd2, 0x90, 0x90},
+        2,
+        {0x41, 0x52},
+        {0x6a, 0x00},
     },
     {0},
     {0},
@@ -105,7 +109,7 @@ static const firmware_profile_t firmware_profiles[] = {
     },
     {
         0x1001,
-        {0x309b8, 0x30a93, 0x30b74, 0x196de, 0x18fe0},
+        {0x30a58, 0x30b45, 0x30bd7, 0x196de, 0x18fe0},
         firmware_1001_overrides,
     },
     {
