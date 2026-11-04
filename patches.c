@@ -113,6 +113,11 @@ static const firmware_profile_t firmware_profiles[] = {
         firmware_1001_overrides,
     },
     {
+        0x0960,
+        {0x30ad0, 0x30bbd, 0x30c4f, 0x19bbe, 0x194b0},
+        firmware_1001_overrides,
+    },
+    {
         0x0320,
         {0x1badc6, 0x1bad0b, 0x1babc8, 0x1271b, 0x11af0},
         firmware_0320_overrides,
