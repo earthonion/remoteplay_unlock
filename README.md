@@ -19,6 +19,7 @@ Built ELFs are ignored by Git. The `main` branch has a GitHub Actions workflow t
 | 9.60 | `0x0960` |
 | 10.01 | `0x1001` |
 | 12.00 | `0x1200` |
+| 12.40 | `0x1240` |
 | 12.70 | `0x1270` |
 | 13.60 | `0x1360` |
 

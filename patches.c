@@ -127,6 +127,14 @@ static const firmware_profile_t firmware_profiles[] = {
         {0x3a03e, 0x3a07d, 0x3a208, 0x1ba25, 0x1b2b0},
         NULL,
     },
+    {
+        /* Offsets are identical to 12.70; the last two also match 12.00.
+           Scanned with the testing payload and the original bytes at each
+           site were verified against the decrypted eboot. */
+        0x1240,
+        {0x3a03e, 0x3a07d, 0x3a208, 0x1ba25, 0x1b2b0},
+        NULL,
+    },
 };
 
 const firmware_profile_t *find_firmware_profile(uint32_t firmware) {
